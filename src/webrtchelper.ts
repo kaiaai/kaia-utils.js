@@ -69,7 +69,7 @@ export class TextToSpeech {
     this._listener(event.err, event);
 }
   
-  function _start(isCaller): void {
+  _start(isCaller: boolean): void {
     this._isCaller = isCaller;
     this._issueEvent({ event: 'webRtcStarting', caller: isCaller, room: this._roomName});
     this._peerConnection = new RTCPeerConnection(peerConnectionConfig);
@@ -88,7 +88,7 @@ export class TextToSpeech {
     }
   }
 
-  function _errorHandler(error: any): void {
+  _errorHandler(error: any): void {
     if (this._debug)
       console.log(error);
     this._issueEvent({'err': error});
@@ -98,7 +98,7 @@ export class TextToSpeech {
     return this._dataChannel;
   }
 
-  function setupDataChannel() {
+  _setupDataChannel(): void {
     dataChannel.onopen = () =>
       this._issueEvent({ event: 'dataChanneOpen', dataChannel: this._dataChannel, err: false });
     dataChannel.onclose = () =>
@@ -109,7 +109,7 @@ export class TextToSpeech {
       this._issueEvent({ event: 'dataChannelError', err: error });
   }
 
-  function gotMessageFromServer(message) {
+  _gotMessageFromServer(message: any) {
     if (this._debug)
       console.log(message);
 
@@ -132,12 +132,12 @@ export class TextToSpeech {
       peerConnection.addIceCandidate(new RTCIceCandidate(signal.ice)).catch(errorHandler);
   }
 
-  function gotIceCandidate(event) {
+  gotIceCandidate(event: any) {
     if (event.candidate != null)
       this._messaging.send({'ice': event.candidate, 'uuid': uuid});
   }
 
-  function createdDescription(description) {
+  createdDescription(description: any) {
     if (this._debug) {
       console.log('Got description');
       console.log(description)
@@ -148,7 +148,7 @@ export class TextToSpeech {
     }).catch(this._errorHandler);
   }
 
-  function _createUUID() {
+  _createUUID(): string {
     function s4() {
       return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
     }
@@ -156,7 +156,7 @@ export class TextToSpeech {
     return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
   }
 
-  function onMessageEvent(err, msg): void {
+  onMessageEvent(err: any, msg: any): void {
     if (err)
       return;
     switch (msg.event) {
