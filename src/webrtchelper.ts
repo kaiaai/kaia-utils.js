@@ -16,7 +16,6 @@
  */
 export class TextToSpeech {
   _peerConnection: any;
-  _uuid: any;
   _dataChannel: any;
   _webRtcStarted: boolean = false;
   _roomName: string = 'WebRTCHelper';
