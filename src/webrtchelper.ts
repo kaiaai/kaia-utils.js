@@ -14,7 +14,7 @@
  * limitations under the License.
  * =============================================================================
  */
-export class TextToSpeech {
+export class WebRTCHelper {
   _peerConnection: any;
   _dataChannel: any;
   _webRtcStarted: boolean = false;
@@ -24,7 +24,6 @@ export class TextToSpeech {
   _debug: boolean = false;
   _uuid: string = '';
   static _messaging: any;
-  _peerConnection: any;
   _peerConnectionConfig: any = {
     'iceServers': [
       {'urls': 'stun:stun.stunprotocol.org:3478'},
@@ -73,18 +72,18 @@ export class TextToSpeech {
   _start(isCaller: boolean): void {
     this._isCaller = isCaller;
     this._issueEvent({ event: 'webRtcStarting', caller: isCaller, room: this._roomName});
-    this._peerConnection = new RTCPeerConnection(peerConnectionConfig);
+    this._peerConnection = new RTCPeerConnection(this._peerConnectionConfig);
     this._peerConnection.onicecandidate = this._gotIceCandidate;
 
     if (isCaller) {    
-      dataChannel = peerConnection.createDataChannel(this._roomName);
-      setupDataChannel();    
-      peerConnection.createOffer().then(this._createdDescription).catch(this._errorHandler);
+      this._dataChannel = this._peerConnection.createDataChannel(this._roomName);
+      this._setupDataChannel();    
+      this._peerConnection.createOffer().then(this._createdDescription).catch(this._errorHandler);
     } else {
       // If user is not the offerer let's wait for a data channel
-      peerConnection.ondatachannel = event => {
-        dataChannel = event.channel;
-        setupDataChannel();
+      this._peerConnection.ondatachannel = (event: any) => {
+        this._dataChannel = event.channel;
+        this._setupDataChannel();
       };
     }
   }
@@ -100,21 +99,21 @@ export class TextToSpeech {
   }
 
   _setupDataChannel(): void {
-    dataChannel.onopen = () =>
+    this._dataChannel.onopen = () =>
       this._issueEvent({ event: 'dataChanneOpen', dataChannel: this._dataChannel, err: false });
-    dataChannel.onclose = () =>
+    this._dataChannel.onclose = () =>
       this._issueEvent({ event: 'dataChanneClose', dataChannel: this._dataChannel, err: false });
-    dataChannel.onmessage = event =>
+    this._dataChannel.onmessage = (event: any) =>
       this._issueEvent({ event: 'message', data: event, err: false });
-    dataChannel.onerror = (error) =>
+    this._dataChannel.onerror = (error: any) =>
       this._issueEvent({ event: 'dataChannelError', err: error });
   }
 
-  _gotMessageFromServer(message: any) {
+  _gotMessageFromServer(message: any): void {
     if (this._debug)
       console.log(message);
 
-    if (!peerConnection)
+    if (!this._peerConnection)
       this._start(false);
 
     let signal = message;
@@ -124,28 +123,30 @@ export class TextToSpeech {
       return;
 
     if (signal.sdp) {
-      peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp)).then(function() {
+      this._peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp)).then(function(x: any) {
         // Only create answers in response to offers
-        if(signal.sdp.type == 'offer')
-          peerConnection.createAnswer().then(createdDescription).catch(errorHandler);
-      }).catch(errorHandler);
+        if (signal.sdp.type == 'offer') {
+          let pc: any = x._peerConnection;
+          pc.createAnswer().then(() => x._createdDescription()).catch(x._errorHandler());
+        }
+      }).catch(this._errorHandler);
     } else if(signal.ice)
-      peerConnection.addIceCandidate(new RTCIceCandidate(signal.ice)).catch(errorHandler);
+      this._peerConnection.addIceCandidate(new RTCIceCandidate(signal.ice)).catch(this._errorHandler);
   }
 
-  gotIceCandidate(event: any) {
+  _gotIceCandidate(event: any) {
     if (event.candidate != null)
-      this._messaging.send({'ice': event.candidate, 'uuid': uuid});
+      WebRTCHelper._messaging.send({'ice': event.candidate, 'uuid': this._uuid});
   }
 
-  createdDescription(description: any) {
+  _createdDescription(description: any) {
     if (this._debug) {
       console.log('Got description');
       console.log(description)
     }
 
-    peerConnection.setLocalDescription(description).then(function() {
-      this._messaging.send({'sdp': peerConnection.localDescription, 'uuid': uuid});
+    this._peerConnection.setLocalDescription(description).then(function(x: any) {
+      x._messaging.send({'sdp': x._peerConnection.localDescription, 'uuid': x._uuid});
     }).catch(this._errorHandler);
   }
 
@@ -157,12 +158,12 @@ export class TextToSpeech {
     return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
   }
 
-  onMessageEvent(err: any, msg: any): void {
+  _onMessageEvent(err: any, msg: any): void {
     if (err)
       return;
     switch (msg.event) {
       case 'message':
-        this._listener('messageFromServer', msg.message);
+        this._issueEvent({ event: 'messageFromServer', message: msg.message });
         this._gotMessageFromServer(msg.message);
         break;
       case 'joined':
@@ -173,15 +174,16 @@ export class TextToSpeech {
           return alert('The room is full');
       
         // First to enter the room is caller
+        let caller: boolean = false;
         if (n == 1)
-          isCaller = true;
+          caller = true;
       
         // Wait both peers to join
         if (n !== 2)
           return;
 
         this._webRtcStarted = true;
-        this._start(isCaller);
+        this._start(caller);
         break;
     }
   }
