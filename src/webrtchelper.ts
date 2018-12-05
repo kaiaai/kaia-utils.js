@@ -43,7 +43,7 @@ export class TextToSpeech {
 
   init(params: any): Promise<any> {
     if (typeof params === 'object') {
-      this._debug(params.debug);
+      this.debug(params.debug);
       // TODO set _messaging
       // TODO set peerConnectionConfig()
       // TODO set dataChannelOptions()
@@ -62,14 +62,21 @@ export class TextToSpeech {
     return this._debug;
   }
 
-  function start(isCaller): void {
+ _issueEvent(event: any) {
+  if (this._debug)
+    console.log('_issueEvent(event) ' + JSON.stringify(event));
+  if (this._listener)
+    this._listener(event.err, event);
+}
+  
+  function _start(isCaller): void {
     this._isCaller = isCaller;
-    this._listener('webRtcStarting', isCaller);
+    this._issueEvent({ event: 'webRtcStarting', caller: isCaller, room: this._roomName});
     this._peerConnection = new RTCPeerConnection(peerConnectionConfig);
     this._peerConnection.onicecandidate = this._gotIceCandidate;
 
     if (isCaller) {    
-      dataChannel = peerConnection.createDataChannel('chat');
+      dataChannel = peerConnection.createDataChannel(this._roomName);
       setupDataChannel();    
       peerConnection.createOffer().then(this._createdDescription).catch(this._errorHandler);
     } else {
@@ -84,7 +91,7 @@ export class TextToSpeech {
   function _errorHandler(error: any): void {
     if (this._debug)
       console.log(error);
-    _listener('error', error);
+    this._issueEvent({'err': error});
   }
 
   dataChannel(): any {
@@ -93,14 +100,13 @@ export class TextToSpeech {
 
   function setupDataChannel() {
     dataChannel.onopen = () =>
-      this._listener('onDataChanneOpen', this._dataChannel));
+      this._issueEvent({ event: 'dataChanneOpen', dataChannel: this._dataChannel, err: false });
     dataChannel.onclose = () =>
-      this._listener('onDataChanneClose', this._dataChannel));
+      this._issueEvent({ event: 'dataChanneClose', dataChannel: this._dataChannel, err: false });
     dataChannel.onmessage = event =>
-//      insertMessageToDOM(JSON.parse(event.data), false);
-      this._listener('onMessage', event));
+      this._issueEvent({ event: 'message', data: event, err: false });
     dataChannel.onerror = (error) =>
-      this._listener('onDataChannelError', error));
+      this._issueEvent({ event: 'dataChannelError', err: error });
   }
 
   function gotMessageFromServer(message) {
@@ -113,7 +119,7 @@ export class TextToSpeech {
     let signal = message;
 
     // Ignore messages from ourself
-    if(signal.uuid == uuid)
+    if(signal.uuid == this._uuid)
       return;
 
     if (signal.sdp) {
