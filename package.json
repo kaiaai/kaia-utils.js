@@ -1,0 +1,44 @@
+{
+    "name": "kaia-utils.js",
+    "version": "0.1.0",
+    "description": "JS utility library for Kaia.ai robots",
+    "main": "./dist/kaia-utils-cjs.js",
+    "module": "./dist/kaia-utils.mjs",
+    "jsdelivr": "./dist/kaia-utils.mjs",
+    "unpkg": "./dist/kaia-utils.mjs",
+    "types": "./dist/kaia-utils.d.ts",
+    "scripts": {
+        "build": "del dist && rollup -c && npm run compress-iife && npm run create-compat && npm run compress-amd",
+        "compress-iife": "uglifyjs --compress --mangle -o dist/kaia-utils-iife.min.js dist/kaia-utils-iife.js",
+        "create-compat": "babel dist/kaia-utils-iife.js | uglifyjs --compress --mangle > dist/kaia-utils-iife-compat.min.js",
+        "compress-amd": "uglifyjs --compress --mangle -o dist/kaia-utils-amd.min.js dist/kaia-utils-amd.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/kaiaai/kaia-utils.js.git"
+    },
+    "keywords": [
+        "kaia.ai",
+        "kaia",
+        "kaia-ai",
+        "kaiaai",
+        "robot",
+        "robotics",
+        "webrtc"
+    ],
+    "author": "OOMWOO LLC",
+    "license": "Apache-2.0",
+    "bugs": {
+        "url": "https://github.com/kaiaai/kaia-utils.js/issues"
+    },
+    "homepage": "https://github.com/kaiaai/kaia-utils.js#readme",
+    "devDependencies": {
+        "babel-cli": "^6.26.0",
+        "babel-preset-env": "^1.6.1",
+        "del-cli": "^1.1.0",
+        "rollup": "^0.56.5",
+        "rollup-plugin-typescript2": "^0.12.0",
+        "typescript": "^2.8.0",
+        "uglify-es": "^3.3.9"
+    }
+}

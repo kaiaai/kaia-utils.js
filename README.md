@@ -1,2 +1,3 @@
-# kaia-utils.js
-Convenience utilities
+# Kaia-utils.js
+Convenience utilities for Kaia.ai platform
+
