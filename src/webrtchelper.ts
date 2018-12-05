@@ -49,6 +49,7 @@ export class TextToSpeech {
       // TODO set _listener
       // TODO set _roomName
     }
+    return Promise.resolve(this);
   }
 
   setEventListener(listener: Function | null): void {
