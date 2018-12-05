@@ -24,6 +24,7 @@ export class TextToSpeech {
   _debug: boolean = false;
   _uuid: string = '';
   static _messaging: any;
+  _peerConnection: any;
   _peerConnectionConfig: any = {
     'iceServers': [
       {'urls': 'stun:stun.stunprotocol.org:3478'},
