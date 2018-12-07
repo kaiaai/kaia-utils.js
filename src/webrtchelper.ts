@@ -31,8 +31,8 @@ export class WebRTCHelper {
     ]
   };
   _dataChannelOptions: any = {
-    ordered: false, // do not guarantee order
-    maxPacketLifeTime: 3000, // in milliseconds
+    // ordered: false, // do not guarantee order
+    // maxPacketLifeTime: 3000, // in milliseconds
   };
 
   constructor() {
@@ -71,8 +71,9 @@ export class WebRTCHelper {
     this._peerConnection = new RTCPeerConnection(this._peerConnectionConfig);
     this._peerConnection.onicecandidate = this._gotIceCandidate;
 
-    if (isCaller) {    
-      this._dataChannel = this._peerConnection.createDataChannel(this._roomName);
+    if (isCaller) {
+      let label = this._dataChannelOptions.label || this._roomName;
+      this._dataChannel = this._peerConnection.createDataChannel(label, this._dataChannelOptions);
       this._setupDataChannel();    
       this._peerConnection.createOffer().then(this._createdDescription).catch(this._errorHandler);
     } else {
