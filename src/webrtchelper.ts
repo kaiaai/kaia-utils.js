@@ -35,39 +35,35 @@ export class WebRTCHelper {
     maxPacketLifeTime: 3000, // in milliseconds
   };
 
-
   constructor() {
     this._uuid = this._createUUID();
   }
 
   init(params: any): Promise<any> {
-    if (typeof params === 'object') {
-      this.debug(params.debug);
-      // TODO set _messaging
-      // TODO set peerConnectionConfig()
-      // TODO set dataChannelOptions()
-      // TODO set _listener
-      // TODO set _roomName
-    }
-    return Promise.resolve(this);
-  }
+    params = params || {};
+    this.debug(params.debug);
+    this.messaging(params.messaging);
+    this.peerConnectionConfig(params.peerConnectionConfig);
+    this.dataChannelOptions(params.dataChannelOptions);
+    this.eventListener(params.eventListener);
+    this.room(params.room);
 
-  setEventListener(listener: Function | null): void {
-    this._listener = listener;
-  }
-
+    // TODO resolve/reject promise
+    return this._makePromise();
+  }  
+  
   debug(params: any): boolean {
     if (typeof params === 'boolean')
       this._debug = params;
     return this._debug;
   }
 
- _issueEvent(event: any) {
-  if (this._debug)
-    console.log('_issueEvent(event) ' + JSON.stringify(event));
-  if (this._listener)
-    this._listener(event.err, event);
-}
+  _issueEvent(event: any) {
+    if (this._debug)
+      console.log('_issueEvent(event) ' + JSON.stringify(event));
+    if (this._listener)
+      this._listener(event.err, event);
+  }
   
   _start(isCaller: boolean): void {
     this._isCaller = isCaller;
@@ -139,12 +135,14 @@ export class WebRTCHelper {
       WebRTCHelper._messaging.send({'ice': event.candidate, 'uuid': this._uuid});
   }
 
+  _send(message: any) {
+  }
+
   _createdDescription(description: any) {
     if (this._debug) {
       console.log('Got description');
       console.log(description)
     }
-
     this._peerConnection.setLocalDescription(description).then(function(x: any) {
       x._messaging.send({'sdp': x._peerConnection.localDescription, 'uuid': x._uuid});
     }).catch(this._errorHandler);
@@ -190,6 +188,48 @@ export class WebRTCHelper {
 
   started(): boolean {
     return this._webRtcStarted;
+  }
+
+  eventListener(listener: Function | null): any {
+    let result = this._listener;
+    if (listener !== undefined)
+      this._listener = listener;
+    return result;
+  }
+
+  dataChannelOptions(options: any): any {
+    let result = this._dataChannelOptions;
+    if (options !== undefined)
+      this._dataChannelOptions = options;
+    return result;
+  }
+
+  peerConnectionConfig(config: any): any {
+    let result = this._peerConnectionConfig;
+    if (config !== undefined)
+      this._peerConnectionConfig = config;
+    return result;
+  }
+
+  messaging(m: any): any {
+    let result = WebRTCHelper._messaging;
+    if (m !== undefined)
+      WebRTCHelper._messaging = m;
+    return result;
+  }
+
+  room(roomName: any): any {
+    let result = this._roomName;
+    if (roomName !== undefined)
+      this._roomName = roomName;
+    return result;
+  }
+
+  close() {
+    this.messaging(null);
+    this.peerConnectionConfig(null);
+    this.dataChannelOptions(null);
+    this.eventListener(null);
   }
 }
 
