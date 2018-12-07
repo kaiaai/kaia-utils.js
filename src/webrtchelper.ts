@@ -35,6 +35,9 @@ export class WebRTCHelper {
     // maxPacketLifeTime: 3000, // in milliseconds
   };
 
+  // TODO multiple data channels, dataChannel(name)
+  // TODO video, audio
+  
   constructor() {
     this._uuid = this._createUUID();
   }
@@ -97,11 +100,11 @@ export class WebRTCHelper {
 
   _setupDataChannel(): void {
     this._dataChannel.onopen = () =>
-      this._issueEvent({ event: 'dataChanneOpen', dataChannel: this._dataChannel, err: false });
+      this._issueEvent({ event: 'dataChannelOpen', dataChannel: this._dataChannel, err: false });
     this._dataChannel.onclose = () =>
-      this._issueEvent({ event: 'dataChanneClose', dataChannel: this._dataChannel, err: false });
+      this._issueEvent({ event: 'dataChannelClose', dataChannel: this._dataChannel, err: false });
     this._dataChannel.onmessage = (event: any) =>
-      this._issueEvent({ event: 'message', data: event, err: false });
+      this._issueEvent({ event: 'dataChannelMessage', data: event, err: false });
     this._dataChannel.onerror = (error: any) =>
       this._issueEvent({ event: 'dataChannelError', err: error });
   }
