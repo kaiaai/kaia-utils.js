@@ -15,6 +15,8 @@
  * =============================================================================
  */
 export class WebRTCHelper {
+  _resolveFunc: Function | null = null;
+  _rejectFunc: Function | null = null;
   _peerConnection: any;
   _dataChannel: any;
   _webRtcStarted: boolean = false;
@@ -69,16 +71,20 @@ export class WebRTCHelper {
   }
   
   _start(isCaller: boolean): void {
+    this._webRtcStarted = true;
     this._isCaller = isCaller;
+    let self = this;
     this._issueEvent({ event: 'webRtcStarting', caller: isCaller, room: this._roomName});
     this._peerConnection = new RTCPeerConnection(this._peerConnectionConfig);
-    this._peerConnection.onicecandidate = this._gotIceCandidate;
+    this._peerConnection.onicecandidate = (event: any) => { self._gotIceCandidate(event) };
 
     if (isCaller) {
       let label = this._dataChannelOptions.label || this._roomName;
+      let self = this;
       this._dataChannel = this._peerConnection.createDataChannel(label, this._dataChannelOptions);
       this._setupDataChannel();    
-      this._peerConnection.createOffer().then(this._createdDescription).catch(this._errorHandler);
+      this._peerConnection.createOffer().then((res: any) => self._createdDescription(res)).
+        catch((err: any) => self._errorHandler(err));
     } else {
       // If user is not the offerer let's wait for a data channel
       this._peerConnection.ondatachannel = (event: any) => {
@@ -91,6 +97,7 @@ export class WebRTCHelper {
   _errorHandler(error: any): void {
     if (this._debug)
       console.log(error);
+    this._reject(error);
     this._issueEvent({'err': error});
   }
 
@@ -99,8 +106,10 @@ export class WebRTCHelper {
   }
 
   _setupDataChannel(): void {
-    this._dataChannel.onopen = () =>
+    this._dataChannel.onopen = () => {
+      this._resolve(this);
       this._issueEvent({ event: 'dataChannelOpen', dataChannel: this._dataChannel, err: false });
+    }
     this._dataChannel.onclose = () =>
       this._issueEvent({ event: 'dataChannelClose', dataChannel: this._dataChannel, err: false });
     this._dataChannel.onmessage = (event: any) =>
@@ -122,24 +131,39 @@ export class WebRTCHelper {
     if(signal.uuid == this._uuid)
       return;
 
+    let self = this;
     if (signal.sdp) {
-      this._peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp)).then(function(x: any) {
-        // Only create answers in response to offers
-        if (signal.sdp.type == 'offer') {
-          let pc: any = x._peerConnection;
-          pc.createAnswer().then(() => x._createdDescription()).catch(x._errorHandler());
-        }
-      }).catch(this._errorHandler);
-    } else if(signal.ice)
-      this._peerConnection.addIceCandidate(new RTCIceCandidate(signal.ice)).catch(this._errorHandler);
+      this._peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp)).
+        then(() => {
+          // Only create answers in response to offers
+          if (signal.sdp.type == 'offer') {
+            self._peerConnection.createAnswer().
+              then((description: any) => self._createdDescription(description)).
+              catch((err: any) => self._errorHandler(err));
+          }
+        }).catch((err: any) => self._errorHandler(err));
+    } else if (signal.ice) {
+      this._peerConnection.addIceCandidate(new RTCIceCandidate(signal.ice)).
+        catch((err: any) => self._errorHandler(err));
+    }
   }
 
   _gotIceCandidate(event: any) {
     if (event.candidate != null)
-      WebRTCHelper._messaging.send({'ice': event.candidate, 'uuid': this._uuid});
+      this._send({'ice': event.candidate, 'uuid': this._uuid});
+  }
+
+  // TODO throw error?
+  send(message: string) {
+    if (!this._dataChannel)
+      throw 'Data channel does not exist';
+    this._dataChannel.send(message);
   }
 
   _send(message: any) {
+    if (this._roomName)
+      message.rooms = this._roomName;
+    WebRTCHelper._messaging.send(message);
   }
 
   _createdDescription(description: any) {
@@ -147,9 +171,10 @@ export class WebRTCHelper {
       console.log('Got description');
       console.log(description)
     }
-    this._peerConnection.setLocalDescription(description).then(function(x: any) {
-      x._messaging.send({'sdp': x._peerConnection.localDescription, 'uuid': x._uuid});
-    }).catch(this._errorHandler);
+    let self = this;
+    this._peerConnection.setLocalDescription(description).then(() => {
+      self._send({'sdp': self._peerConnection.localDescription, 'uuid': self._uuid});
+    }).catch(self._errorHandler);
   }
 
   _createUUID(): string {
@@ -172,19 +197,15 @@ export class WebRTCHelper {
         if (this._webRtcStarted)
           return;
         const n: number = msg.clients.length;
-        if (n >= 3)
-          return alert('The room is full');
-      
-        // First to enter the room is caller
-        let caller: boolean = false;
-        if (n == 1)
-          caller = true;
-      
-        // Wait both peers to join
+        if (n >= 3) {
+          this._issueEvent({ err: 'roomIsFull' });
+          return;
+        }
         if (n !== 2)
           return;
 
-        this._webRtcStarted = true;
+        let caller = !(WebRTCHelper._messaging.id() === msg.client);
+console.log(this);
         this._start(caller);
         break;
     }
@@ -192,6 +213,33 @@ export class WebRTCHelper {
 
   started(): boolean {
     return this._webRtcStarted;
+  }
+
+  _makePromise(): Promise<any> {
+    let promise = new Promise<any>((resolve, reject) => {
+      this._resolveFunc = resolve;
+      this._rejectFunc = reject;
+    });
+    return promise;
+  }
+
+  _clearCallback(): void {
+    this._resolveFunc = null;
+    this._rejectFunc = null;
+  }
+
+  _resolve(res: any): void {
+    let cb = this._resolveFunc;
+    this._clearCallback();
+    if (cb !== null)
+      cb(res);
+  }
+
+  _reject(err: any): void {
+    let cb = this._rejectFunc;
+    this._clearCallback();
+    if (cb !== null)
+      cb(err);
   }
 
   eventListener(listener: Function | null): any {
@@ -219,6 +267,12 @@ export class WebRTCHelper {
     let result = WebRTCHelper._messaging;
     if (m !== undefined)
       WebRTCHelper._messaging = m;
+    if (WebRTCHelper._messaging) {
+      let self = this;
+      WebRTCHelper._messaging.setEventListener((err: any, data: any) => {
+        self._onMessageEvent(err, data);
+      });
+    }
     return result;
   }
 
@@ -230,6 +284,7 @@ export class WebRTCHelper {
   }
 
   close() {
+    this._clearCallback();
     this.messaging(null);
     this.peerConnectionConfig(null);
     this.dataChannelOptions(null);

@@ -15,6 +15,8 @@
  * =============================================================================
  */
 export declare class WebRTCHelper {
+    _resolveFunc: Function | null;
+    _rejectFunc: Function | null;
     _peerConnection: any;
     _dataChannel: any;
     _webRtcStarted: boolean;
@@ -28,7 +30,6 @@ export declare class WebRTCHelper {
     _dataChannelOptions: any;
     constructor();
     init(params: any): Promise<any>;
-    setEventListener(listener: Function | null): void;
     debug(params: any): boolean;
     _issueEvent(event: any): void;
     _start(isCaller: boolean): void;
@@ -37,9 +38,21 @@ export declare class WebRTCHelper {
     _setupDataChannel(): void;
     _gotMessageFromServer(message: any): void;
     _gotIceCandidate(event: any): void;
+    send(message: string): void;
+    _send(message: any): void;
     _createdDescription(description: any): void;
     _createUUID(): string;
     _onMessageEvent(err: any, msg: any): void;
     started(): boolean;
+    _makePromise(): Promise<any>;
+    _clearCallback(): void;
+    _resolve(res: any): void;
+    _reject(err: any): void;
+    eventListener(listener: Function | null): any;
+    dataChannelOptions(options: any): any;
+    peerConnectionConfig(config: any): any;
+    messaging(m: any): any;
+    room(roomName: any): any;
+    close(): void;
 }
 export declare function createWebRTCHelper(params: any): Promise<any>;

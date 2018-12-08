@@ -17,7 +17,11 @@ define(['exports'], function (exports) { 'use strict';
  * =============================================================================
  */
 class WebRTCHelper {
+    // TODO multiple data channels, dataChannel(name)
+    // TODO video, audio
     constructor() {
+        this._resolveFunc = null;
+        this._rejectFunc = null;
         this._webRtcStarted = false;
         this._roomName = 'WebRTCHelper';
         this._listener = null;
@@ -31,24 +35,21 @@ class WebRTCHelper {
             ]
         };
         this._dataChannelOptions = {
-            ordered: false,
-            maxPacketLifeTime: 3000,
+        // ordered: false, // do not guarantee order
+        // maxPacketLifeTime: 3000, // in milliseconds
         };
         this._uuid = this._createUUID();
     }
     init(params) {
-        if (typeof params === 'object') {
-            this.debug(params.debug);
-            // TODO set _messaging
-            // TODO set peerConnectionConfig()
-            // TODO set dataChannelOptions()
-            // TODO set _listener
-            // TODO set _roomName
-        }
-        return Promise.resolve(this);
-    }
-    setEventListener(listener) {
-        this._listener = listener;
+        params = params || {};
+        this.debug(params.debug);
+        this.messaging(params.messaging);
+        this.peerConnectionConfig(params.peerConnectionConfig);
+        this.dataChannelOptions(params.dataChannelOptions);
+        this.eventListener(params.eventListener);
+        this.room(params.room);
+        // TODO resolve/reject promise
+        return this._makePromise();
     }
     debug(params) {
         if (typeof params === 'boolean')
@@ -62,14 +63,19 @@ class WebRTCHelper {
             this._listener(event.err, event);
     }
     _start(isCaller) {
+        this._webRtcStarted = true;
         this._isCaller = isCaller;
+        let self = this;
         this._issueEvent({ event: 'webRtcStarting', caller: isCaller, room: this._roomName });
         this._peerConnection = new RTCPeerConnection(this._peerConnectionConfig);
-        this._peerConnection.onicecandidate = this._gotIceCandidate;
+        this._peerConnection.onicecandidate = (event) => { self._gotIceCandidate(event); };
         if (isCaller) {
-            this._dataChannel = this._peerConnection.createDataChannel(this._roomName);
+            let label = this._dataChannelOptions.label || this._roomName;
+            let self = this;
+            this._dataChannel = this._peerConnection.createDataChannel(label, this._dataChannelOptions);
             this._setupDataChannel();
-            this._peerConnection.createOffer().then(this._createdDescription).catch(this._errorHandler);
+            this._peerConnection.createOffer().then((res) => self._createdDescription(res)).
+                catch((err) => self._errorHandler(err));
         }
         else {
             // If user is not the offerer let's wait for a data channel
@@ -82,15 +88,19 @@ class WebRTCHelper {
     _errorHandler(error) {
         if (this._debug)
             console.log(error);
+        this._reject(error);
         this._issueEvent({ 'err': error });
     }
     dataChannel() {
         return this._dataChannel;
     }
     _setupDataChannel() {
-        this._dataChannel.onopen = () => this._issueEvent({ event: 'dataChanneOpen', dataChannel: this._dataChannel, err: false });
-        this._dataChannel.onclose = () => this._issueEvent({ event: 'dataChanneClose', dataChannel: this._dataChannel, err: false });
-        this._dataChannel.onmessage = (event) => this._issueEvent({ event: 'message', data: event, err: false });
+        this._dataChannel.onopen = () => {
+            this._resolve(this);
+            this._issueEvent({ event: 'dataChannelOpen', dataChannel: this._dataChannel, err: false });
+        };
+        this._dataChannel.onclose = () => this._issueEvent({ event: 'dataChannelClose', dataChannel: this._dataChannel, err: false });
+        this._dataChannel.onmessage = (event) => this._issueEvent({ event: 'dataChannelMessage', data: event, err: false });
         this._dataChannel.onerror = (error) => this._issueEvent({ event: 'dataChannelError', err: error });
     }
     _gotMessageFromServer(message) {
@@ -102,30 +112,47 @@ class WebRTCHelper {
         // Ignore messages from ourself
         if (signal.uuid == this._uuid)
             return;
+        let self = this;
         if (signal.sdp) {
-            this._peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp)).then(function (x) {
+            this._peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp)).
+                then(() => {
                 // Only create answers in response to offers
                 if (signal.sdp.type == 'offer') {
-                    let pc = x._peerConnection;
-                    pc.createAnswer().then(() => x._createdDescription()).catch(x._errorHandler());
+                    self._peerConnection.createAnswer().
+                        then((description) => self._createdDescription(description)).
+                        catch((err) => self._errorHandler(err));
                 }
-            }).catch(this._errorHandler);
+            }).catch((err) => self._errorHandler(err));
         }
-        else if (signal.ice)
-            this._peerConnection.addIceCandidate(new RTCIceCandidate(signal.ice)).catch(this._errorHandler);
+        else if (signal.ice) {
+            this._peerConnection.addIceCandidate(new RTCIceCandidate(signal.ice)).
+                catch((err) => self._errorHandler(err));
+        }
     }
     _gotIceCandidate(event) {
         if (event.candidate != null)
-            WebRTCHelper._messaging.send({ 'ice': event.candidate, 'uuid': this._uuid });
+            this._send({ 'ice': event.candidate, 'uuid': this._uuid });
+    }
+    // TODO throw error?
+    send(message) {
+        if (!this._dataChannel)
+            throw 'Data channel does not exist';
+        this._dataChannel.send(message);
+    }
+    _send(message) {
+        if (this._roomName)
+            message.rooms = this._roomName;
+        WebRTCHelper._messaging.send(message);
     }
     _createdDescription(description) {
         if (this._debug) {
             console.log('Got description');
             console.log(description);
         }
-        this._peerConnection.setLocalDescription(description).then(function (x) {
-            x._messaging.send({ 'sdp': x._peerConnection.localDescription, 'uuid': x._uuid });
-        }).catch(this._errorHandler);
+        let self = this;
+        this._peerConnection.setLocalDescription(description).then(() => {
+            self._send({ 'sdp': self._peerConnection.localDescription, 'uuid': self._uuid });
+        }).catch(self._errorHandler);
     }
     _createUUID() {
         function s4() {
@@ -145,22 +172,86 @@ class WebRTCHelper {
                 if (this._webRtcStarted)
                     return;
                 const n = msg.clients.length;
-                if (n >= 3)
-                    return alert('The room is full');
-                // First to enter the room is caller
-                let caller = false;
-                if (n == 1)
-                    caller = true;
-                // Wait both peers to join
+                if (n >= 3) {
+                    this._issueEvent({ err: 'roomIsFull' });
+                    return;
+                }
                 if (n !== 2)
                     return;
-                this._webRtcStarted = true;
+                let caller = !(WebRTCHelper._messaging.id() === msg.client);
+                console.log(this);
                 this._start(caller);
                 break;
         }
     }
     started() {
         return this._webRtcStarted;
+    }
+    _makePromise() {
+        let promise = new Promise((resolve, reject) => {
+            this._resolveFunc = resolve;
+            this._rejectFunc = reject;
+        });
+        return promise;
+    }
+    _clearCallback() {
+        this._resolveFunc = null;
+        this._rejectFunc = null;
+    }
+    _resolve(res) {
+        let cb = this._resolveFunc;
+        this._clearCallback();
+        if (cb !== null)
+            cb(res);
+    }
+    _reject(err) {
+        let cb = this._rejectFunc;
+        this._clearCallback();
+        if (cb !== null)
+            cb(err);
+    }
+    eventListener(listener) {
+        let result = this._listener;
+        if (listener !== undefined)
+            this._listener = listener;
+        return result;
+    }
+    dataChannelOptions(options) {
+        let result = this._dataChannelOptions;
+        if (options !== undefined)
+            this._dataChannelOptions = options;
+        return result;
+    }
+    peerConnectionConfig(config) {
+        let result = this._peerConnectionConfig;
+        if (config !== undefined)
+            this._peerConnectionConfig = config;
+        return result;
+    }
+    messaging(m) {
+        let result = WebRTCHelper._messaging;
+        if (m !== undefined)
+            WebRTCHelper._messaging = m;
+        if (WebRTCHelper._messaging) {
+            let self = this;
+            WebRTCHelper._messaging.setEventListener((err, data) => {
+                self._onMessageEvent(err, data);
+            });
+        }
+        return result;
+    }
+    room(roomName) {
+        let result = this._roomName;
+        if (roomName !== undefined)
+            this._roomName = roomName;
+        return result;
+    }
+    close() {
+        this._clearCallback();
+        this.messaging(null);
+        this.peerConnectionConfig(null);
+        this.dataChannelOptions(null);
+        this.eventListener(null);
     }
 }
 async function createWebRTCHelper(params) {
